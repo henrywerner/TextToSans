@@ -2,8 +2,11 @@ package sanser;
 
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
+import javafx.fxml.Initializable;
 import javafx.scene.control.Button;
+import javafx.scene.control.Slider;
 import javafx.scene.control.TextArea;
+import javafx.scene.control.TextField;
 import javafx.scene.text.Text;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.FileChooser;
@@ -11,36 +14,41 @@ import javafx.stage.FileChooser;
 import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
 import java.io.*;
+import java.net.URL;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
+import java.text.NumberFormat;
+import java.util.ArrayList;
+import java.util.ResourceBundle;
 
-public class Controller {
+public class Controller implements Initializable {
     public File inputFile;
     public File outputDir;
     public File outputFile;
 
-    public float inputTrimDuration = 0.13f; //TODO: Add UI element that allows the user to adjust this
+    public int byteLimit;
+    public double inputTrimDuration = 1.000; //TODO: Add UI element that allows the user to adjust this
 
     //used for the borrowed code. Rework this after testing.
     private int headLength1 = 0;
     private int headLength2 = 0;
 
-    @FXML
-    private Button btnInput;
+    @FXML private Button btnInput;
+    @FXML private Button btnOutput;
+    @FXML private Text inputPath, outputPath;
+    @FXML private TextArea script;
+    @FXML private TextField trimInput;
+    @FXML private Slider trimSlider;
 
-    @FXML
-    private Button btnOutput;
-
-    @FXML
-    private Text inputPath, outputPath;
-
-    @FXML
-    private TextArea script;
+    @Override
+    public void initialize(URL location, ResourceBundle resources) {
+        trimInput.setText("" + inputTrimDuration);
+        trimSlider.setValue(inputTrimDuration);
+    }
 
     public void selectInputFile(ActionEvent event) {
         FileChooser wavChooser = new FileChooser();
         wavChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("WAV file", "*.wav"));
-        wavChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("MP3 file", "*.mp3"));
 
         inputFile = wavChooser.showOpenDialog(null);
 
@@ -64,6 +72,29 @@ public class Controller {
             outputPath.setText("Output Dir: " + outputDir.getAbsolutePath());
         else
             outputPath.setText("Output Dir: ...");
+    }
+
+    public void adjustTrimSlider(ActionEvent event) {
+        inputTrimDuration = trimSlider.valueProperty().doubleValue();
+        trimInput.setText("" + inputTrimDuration);
+    }
+
+    public void adjustTrimInput(ActionEvent event) {
+        double k;
+        try {
+            k = Double.parseDouble(trimInput.getText());
+        } catch (NumberFormatException | NullPointerException e) {
+            k = 1.000;
+        }
+        trimSlider.setValue(k);
+        inputTrimDuration = k;
+
+    }
+
+    public void updateAdjustmentField(double i) {
+        //handle adjustment in percent of the original length. I.e. full length = 1.0
+        trimInput.setText("" + i);
+        trimSlider.setValue(i);
     }
 
     public void save(ActionEvent event) {
@@ -95,17 +126,32 @@ public class Controller {
                     outputFile);
             */
 
-            //Testing functionality of borrowed code...
+            //Needed for the borrowed code. Change this later.
             headLength1 = 0;
             headLength2 = 0;
+
+            //adjust input and output
             outputFile = new File(outputDir.getAbsolutePath() + "//generatedSpeech.wav");
             File trimmedInput = trimAudio(inputFile);
 
-            String[] wavList = new String[10];
-            for (int x = 0; x < 10; x++) {
-                wavList[x] = trimmedInput.getAbsolutePath();
+            //String[] wavList = new String[10];
+            ArrayList<String> wavList = new ArrayList<>();
+
+            //Parse through script
+            for (int c = 0; c < scriptText.length(); c++) {
+                switch (scriptText.charAt(c)){
+                    case ' ':
+                        wavList.add("pause");
+                        break;
+                    default:
+                        wavList.add(trimmedInput.getAbsolutePath());
+                }
             }
-            addWav(outputFile.getAbsolutePath(), wavList);
+
+//            for (int x = 0; x < 10; x++) {
+//                wavList[x] = trimmedInput.getAbsolutePath();
+//            }
+            addWav(outputFile.getAbsolutePath(), wavList.toArray(new String[0])); //THIS PROBABLY WONT WORK
 
             return true;
         } catch (Exception e) {
@@ -123,13 +169,7 @@ public class Controller {
         return appendedFiles;
     }
 
-    public File trimAudio(File in) throws IOException {
-        File outFile = new File("./input_trimmed.wav");
-        if (!outFile.getParentFile().exists()) outFile.getParentFile().mkdirs();
-        if (!outFile.exists()) outFile.createNewFile();
-
-        int byteLimit;
-
+    public void updateByteLimit(File in) {
         try {
             //get bytes per frame so we can convert to seconds
             AudioInputStream input = AudioSystem.getAudioInputStream(in);
@@ -139,9 +179,24 @@ public class Controller {
             byteLimit = (int)(bytesPerSec * inputTrimDuration); //set the trim to the seconds duration set by user
             System.out.println("Byte Limit: " + byteLimit);
         } catch (Exception e) {
-            byteLimit = 70560; //this is an arbitrary limit. It probably will break things. remove this.
             e.printStackTrace();
         }
+    }
+
+    /**
+     * Trim audio file to a specified length
+     * @param in input audio file
+     * @return shortened version of input file
+     * @throws IOException in case there is an issue writing the file to disk
+     */
+    public File trimAudio(File in) throws IOException {
+        File outFile = new File("./input_trimmed.wav");
+        if (!outFile.getParentFile().exists()) outFile.getParentFile().mkdirs();
+        if (!outFile.exists()) outFile.createNewFile();
+
+        //update byteLimit if undef
+        if (byteLimit == 0)
+            updateByteLimit(in);
 
         OutputStream os = new FileOutputStream(outFile);
         InputStream is = new FileInputStream(in);
@@ -217,32 +272,44 @@ public class Controller {
     }
 
     /**
-     * Combine multiple wavs into a new wav
+     * Combine multiple wavs into a new wav. Original code by yujing, modified by me :)
      * @param out output file
      * @param in input file array
      * @throws IOException
      */
     public void addWav(String out, String... in) throws IOException {
         File outFile = new File(out);
-        if (!outFile.getParentFile().exists()) outFile.getParentFile().mkdirs();
-        if (!outFile.exists()) outFile.createNewFile();
-        OutputStream os = new FileOutputStream(outFile);// append
+        if (!outFile.getParentFile().exists())
+            outFile.getParentFile().mkdirs();
+        if (!outFile.exists())
+            outFile.createNewFile();
+
+        OutputStream os = new FileOutputStream(outFile);
+
         for (int i = 0; i < in.length; i++) {
-            File file1 = new File(in[i]);
-            //System.out.println(in[i] + "File length:" + file1.length());
-            InputStream is = new FileInputStream(file1);
-            if (i != 0) {
-                //noinspection ResultOfMethodCallIgnored
-                is.skip(44);// Skip the file header of the following .wav
-            }
-            byte[] tempBuffer = new byte[1024];
-            int nRed = 0;
-            // Copy all contents of wav to out.wav
-            while ((nRed = is.read(tempBuffer)) != -1) {
-                os.write(tempBuffer, 0, nRed);
+            if (in[i].equals("pause")) {
+                //this might be the WORST way I could have done this, but it works.
+                for (int x = 0; x < byteLimit; x++) {
+                    os.write(0);
+                }
                 os.flush();
             }
-            is.close();
+            else {
+                File file1 = new File(in[i]);
+                InputStream is = new FileInputStream(file1);
+                if (i != 0) {
+                    //noinspection ResultOfMethodCallIgnored
+                    is.skip(44);// Skip the file header of the following .wav
+                }
+                byte[] tempBuffer = new byte[1024];
+                int nRed = 0;
+                // Copy all contents of wav to out.wav
+                while ((nRed = is.read(tempBuffer)) != -1) {
+                    os.write(tempBuffer, 0, nRed);
+                    os.flush();
+                }
+                is.close();
+            }
         }
         os.close();
         // At this point, all wavs in the in array are merged into out.wav, but when out.wav is played, the audio content is still only the content of the first audio, so the file header of out.wav needs to be changed
