@@ -19,10 +19,12 @@ import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.text.NumberFormat;
 import java.util.ArrayList;
+import java.util.Locale;
 import java.util.ResourceBundle;
 
 public class Controller implements Initializable {
     public File inputFile;
+    public File trimmedInputFile;
     public File outputDir;
     public File outputFile;
 
@@ -104,40 +106,45 @@ public class Controller implements Initializable {
             System.out.println("Something went wrong.");
     }
 
+    public int getSyllables(String str) {
+        str = str.toLowerCase(Locale.ROOT); //convert to lowercase
+        boolean previouslyVowel = false;
+        int syllables = 0;
+
+        for (int x = 0; x < str.length(); x++) {
+            char c = str.charAt(x);
+            if (c=='a'|| c=='e' || c=='i' || c=='o' || c=='u' || c=='y') {
+                if (!previouslyVowel) {
+                    syllables++;
+                    previouslyVowel = true;
+                }
+            }
+            else //consonant
+                previouslyVowel = false;
+        }
+
+        if (str.endsWith("e"))
+            syllables--;
+
+        if (syllables == 0)
+            return 1;
+        return syllables;
+    }
+
     public boolean buildSound() {
         //get text from script entry box
         String scriptText = script.getText();
 
         try {
-            /*
-            AudioInputStream clip1 = AudioSystem.getAudioInputStream(inputFile);
-            AudioInputStream clip2 = AudioSystem.getAudioInputStream(inputFile);
-
-            AudioInputStream appendedFiles = append(clip1, clip2);
-
-            for (int x = 0; x < 10; x++) {
-                appendedFiles = append(appendedFiles, clip1);
-            }
-
-            outputFile = new File(outputDir.getAbsolutePath() + "//generatedSpeech.wav");
-
-            AudioSystem.write(appendedFiles,
-                    AudioFileFormat.Type.WAVE,
-                    outputFile);
-            */
-
-            //Needed for the borrowed code. Change this later.
-            headLength1 = 0;
-            headLength2 = 0;
-
             //adjust input and output
             outputFile = new File(outputDir.getAbsolutePath() + "//generatedSpeech.wav");
-            File trimmedInput = trimAudio(inputFile);
+            trimmedInputFile = trimAudio(inputFile);
 
             //String[] wavList = new String[10];
             ArrayList<String> wavList = new ArrayList<>();
 
             //Parse through script
+            /*
             for (int c = 0; c < scriptText.length(); c++) {
                 switch (scriptText.charAt(c)){
                     case ' ':
@@ -147,12 +154,28 @@ public class Controller implements Initializable {
                         wavList.add(trimmedInput.getAbsolutePath());
                 }
             }
+            */
+            ArrayList<Character> sounds = new ArrayList<>();
+            String[] words = scriptText.split("\\s+"); //split on spaces, include consecutive
+            System.out.println(words);
+            for (String s : words) {
+                int syl = getSyllables(s);
+                while (syl != 0) {
+                    sounds.add('a');
+                    syl--;
+                }
+                if (s.matches(".*([.,!?])\\z")){
+                    sounds.add(' ');
+                }
+
+                sounds.add(' '); // add a pause after every word
+            }
 
 //            for (int x = 0; x < 10; x++) {
 //                wavList[x] = trimmedInput.getAbsolutePath();
 //            }
-            addWav(outputFile.getAbsolutePath(), wavList.toArray(new String[0])); //THIS PROBABLY WONT WORK
-
+            //addWav(outputFile.getAbsolutePath(), wavList.toArray(new String[0])); //THIS PROBABLY WONT WORK
+            createWav(outputFile.getAbsolutePath(), sounds.toArray(sounds.toArray(new Character[0])));
             return true;
         } catch (Exception e) {
             e.printStackTrace();
@@ -191,8 +214,10 @@ public class Controller implements Initializable {
      */
     public File trimAudio(File in) throws IOException {
         File outFile = new File("./input_trimmed.wav");
-        if (!outFile.getParentFile().exists()) outFile.getParentFile().mkdirs();
-        if (!outFile.exists()) outFile.createNewFile();
+        if (!outFile.getParentFile().exists())
+            outFile.getParentFile().mkdirs();
+        if (!outFile.exists())
+            outFile.createNewFile();
 
         //update byteLimit if undef
         if (byteLimit == 0)
@@ -221,7 +246,7 @@ public class Controller implements Initializable {
         return outFile;
     }
 
-    /* CODE TAKEN FROM https://programmersought.com/article/66957226714/ */
+    /* FOLLOWING CODE TAKEN FROM https://programmersought.com/article/66957226714/ */
 
     public static int byteArrayToInt(byte[] b) {
         return b[3] & 0xFF | (b[2] & 0xFF) << 8 | (b[1] & 0xFF) << 16 | (b[0] & 0xFF) << 24;
@@ -237,6 +262,7 @@ public class Controller implements Initializable {
         return null;
     }
 
+    //TODO: Rewrite this so it is optimized for using a single file 50+ times
     public void updateFileHead(String out, boolean ifUpdate) throws IOException {
         RandomAccessFile raf = new RandomAccessFile(out, "rw");
         //long fileLength = raf.length();
@@ -311,10 +337,88 @@ public class Controller implements Initializable {
                 is.close();
             }
         }
+        os.flush(); //just in case?
         os.close();
         // At this point, all wavs in the in array are merged into out.wav, but when out.wav is played, the audio content is still only the content of the first audio, so the file header of out.wav needs to be changed
         for (String s : in) updateFileHead(s, false);
         updateFileHead(out, true);//Head synthesis
     }
     /* END OF TAKEN CODE */
+
+    /**
+     * Create WAV file based on a character array of syllables
+     * @param out Output WAV file location
+     * @param dialogue Array of characters corresponding to syllables (should probably just be a bool array)
+     * @throws IOException In case something goes wrong with reading/writing files
+     */
+    public void createWav(String out, Character[] dialogue) throws IOException {
+        File outFile = new File(out);
+        if (!outFile.getParentFile().exists())
+            outFile.getParentFile().mkdirs();
+        if (!outFile.exists())
+            outFile.createNewFile();
+
+        OutputStream os = new FileOutputStream(outFile);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+
+        //skip to the first non-space because I need to handle the first syllable outside of the loop.
+        int startPoint = 0;
+        while (dialogue[startPoint] == ' ') {
+            startPoint++;
+        }
+
+        //create an input stream from the trimmed file and output to the outfile.
+        InputStream is = new FileInputStream(trimmedInputFile);
+        byte[] tempBuffer = new byte[1024];
+        int nRed = 0;
+        while ((nRed = is.read(tempBuffer)) != -1) {
+            os.write(tempBuffer, 0, nRed);
+            os.flush();
+        }
+        is.close();
+        startPoint++; //update startPoint again.
+
+        //make a second inputStream because we need to read from the beginning of the file.
+        InputStream is2 = new FileInputStream(trimmedInputFile);
+        is2.transferTo(baos);
+        is2.close();
+
+        //loop through the array of syllables. Start at the adjusted start point.
+        for (int i = startPoint; i < dialogue.length; i++) {
+            switch (dialogue[i]) {
+                case 'e': //make specific noise
+                    //add code later?
+                    break;
+                case ' ': //pause
+                    for (int x = 0; x < byteLimit; x++) {
+                        os.write(0);
+                    }
+                    os.flush();
+                    break;
+                default: //make generic noise
+                    InputStream dupe = new ByteArrayInputStream(baos.toByteArray()); //create duplicate of trimmed input
+                    dupe.skip(44);
+                    byte[] buffer = new byte[1024];
+                    nRed = 0;
+                    while ((nRed = dupe.read(buffer)) != -1) {
+                        os.write(buffer, 0, nRed); //append dupe to the end of output wav file
+                        os.flush();
+                    }
+                    dupe.close();
+            }
+        }
+        os.flush(); //just in case?
+        os.close();
+
+        // At this point, all wavs in the in array are merged into out.wav, but when out.wav is played, the audio
+        // content is still only the content of the first audio, so the file header of out.wav needs to be changed
+        headLength1 = 0;
+        headLength2 = 0;
+        for (int x = 0; x < dialogue.length; x++) //this is what adjusts the values used to update the file header.
+            updateFileHead(trimmedInputFile.getAbsolutePath(), false);
+        updateFileHead(out, true);//Head synthesis
+
+        // NOTE: THE ISSUE WHERE THE END IS RANDOMLY CUT OFF IS PROBABLY CAUSED BY THE HEADER LENGTH NOT ACCOUNTING FOR
+        // THE PAUSES. OR MAYBE IT'S AN ISSUE WITH THE WORD COUNT??
+    }
 }
