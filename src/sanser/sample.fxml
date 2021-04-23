@@ -60,8 +60,8 @@
             </VBox>
             <ButtonBar prefHeight="40.0" prefWidth="200.0">
               <buttons>
-                <Button mnemonicParsing="false" text="Play" />
-                  <Button layoutX="510.0" layoutY="18.0" mnemonicParsing="false" onAction="#save" text="Save" />
+                <Button fx:id="btnPlay" mnemonicParsing="false" onAction="#playSound" text="Play" />
+                  <Button fx:id="btnSave" layoutX="510.0" layoutY="18.0" mnemonicParsing="false" onAction="#save" text="Save" />
               </buttons>
             </ButtonBar>
          </children>
@@ -69,5 +69,17 @@
             <Insets bottom="10.0" left="10.0" right="10.0" top="10.0" />
          </padding>
       </VBox>
+      <HBox alignment="CENTER_RIGHT" prefHeight="16.0" prefWidth="600.0" style="-fx-background-color: #E0E0E0;" AnchorPane.bottomAnchor="0.0">
+         <children>
+            <Text fx:id="helpText" strokeType="OUTSIDE" strokeWidth="0.0" text="Saving..." textAlignment="RIGHT">
+               <HBox.margin>
+                  <Insets bottom="2.0" right="10.0" />
+               </HBox.margin>
+            </Text>
+         </children>
+         <opaqueInsets>
+            <Insets />
+         </opaqueInsets>
+      </HBox>
    </children>
 </AnchorPane>

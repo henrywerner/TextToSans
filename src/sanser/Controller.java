@@ -7,6 +7,9 @@ import javafx.scene.control.Button;
 import javafx.scene.control.Slider;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
+import javafx.scene.media.AudioClip;
+import javafx.scene.media.Media;
+import javafx.scene.media.MediaPlayer;
 import javafx.scene.text.Text;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.FileChooser;
@@ -28,6 +31,10 @@ public class Controller implements Initializable {
     public File outputDir;
     public File outputFile;
 
+    public AudioClip clip;
+    private boolean soundGenerated = false;
+    private boolean playingAudio = false;
+
     public int byteLimit;
     public double inputTrimDuration = 1.000; //TODO: Add UI element that allows the user to adjust this
 
@@ -37,7 +44,9 @@ public class Controller implements Initializable {
 
     @FXML private Button btnInput;
     @FXML private Button btnOutput;
-    @FXML private Text inputPath, outputPath;
+    @FXML private Button btnSave;
+    @FXML private Button btnPlay;
+    @FXML private Text inputPath, outputPath, helpText;
     @FXML private TextArea script;
     @FXML private TextField trimInput;
     @FXML private Slider trimSlider;
@@ -46,10 +55,16 @@ public class Controller implements Initializable {
     public void initialize(URL location, ResourceBundle resources) {
         trimInput.setText("" + inputTrimDuration);
         trimSlider.setValue(inputTrimDuration);
+
+        outputDir = new File("");
+        outputPath.setText("Output Dir: " + outputDir.getAbsolutePath());
+
+        helpText.setText("");
     }
 
     public void selectInputFile(ActionEvent event) {
         FileChooser wavChooser = new FileChooser();
+        wavChooser.setInitialDirectory(new File("./"));
         wavChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("WAV file", "*.wav"));
 
         inputFile = wavChooser.showOpenDialog(null);
@@ -57,16 +72,18 @@ public class Controller implements Initializable {
         if (inputFile != null) {
             //System.out.println(inputFile.getName());
             inputPath.setText("Input File: " + inputFile.getAbsolutePath());
+            helpText.setText("Input file set: " + inputFile.getName());
         }
         else {
             System.out.println("Null file");
             inputPath.setText("Input File: ...");
+            helpText.setText("Input file not chosen.");
         }
     }
 
     public void selectOutputFile(ActionEvent event) {
         DirectoryChooser chooser1 = new DirectoryChooser();
-        chooser1.setInitialDirectory(new File("./src"));
+        chooser1.setInitialDirectory(new File("./"));
 
         outputDir = chooser1.showDialog(null);
 
@@ -74,11 +91,14 @@ public class Controller implements Initializable {
             outputPath.setText("Output Dir: " + outputDir.getAbsolutePath());
         else
             outputPath.setText("Output Dir: ...");
+
+        helpText.setText("Output directory set: " + outputDir.getAbsolutePath());
     }
 
     public void adjustTrimSlider(ActionEvent event) {
         inputTrimDuration = trimSlider.valueProperty().doubleValue();
         trimInput.setText("" + inputTrimDuration);
+        helpText.setText("Sample trim set: " + inputTrimDuration);
     }
 
     public void adjustTrimInput(ActionEvent event) {
@@ -90,7 +110,7 @@ public class Controller implements Initializable {
         }
         trimSlider.setValue(k);
         inputTrimDuration = k;
-
+        helpText.setText("Sample trim set: " + inputTrimDuration);
     }
 
     public void updateAdjustmentField(double i) {
@@ -100,10 +120,16 @@ public class Controller implements Initializable {
     }
 
     public void save(ActionEvent event) {
-        if (buildSound())
+        if (buildSound()) {
+            soundGenerated = true;
             System.out.println("Saved");
-        else
+            helpText.setText("Save Complete.");
+        }
+        else {
+            soundGenerated = false;
             System.out.println("Something went wrong.");
+            helpText.setText("Save Failed.");
+        }
     }
 
     public int getSyllables(String str) {
@@ -131,11 +157,38 @@ public class Controller implements Initializable {
         return syllables;
     }
 
+    public void playSound(ActionEvent event) {
+        if (soundGenerated && !playingAudio) {
+            /*
+            Media media = new Media(new File(outputFile.getAbsolutePath()).toURI().toString());
+            mp = new MediaPlayer(media);
+            //mp.setAutoPlay(true);
+            mp.play();
+            btnPlay.setText("Pause");
+
+            mp.setOnEndOfMedia(() -> {
+                btnPlay.setText("Play");
+            });
+             */
+            clip = new AudioClip(new File(inputFile.getAbsolutePath()).toURI().toString());
+            clip.play();
+            //btnPlay.setText("Pause");
+        }
+        else if (playingAudio) {
+            //mp.stop();
+            clip.stop();
+            //btnPlay.setText("Play");
+        }
+
+    }
+
     public boolean buildSound() {
         //get text from script entry box
         String scriptText = script.getText();
 
         try {
+            helpText.setText("Saving...");
+
             //adjust input and output
             outputFile = new File(outputDir.getAbsolutePath() + "//generatedSpeech.wav");
             trimmedInputFile = trimAudio(inputFile);
@@ -213,7 +266,7 @@ public class Controller implements Initializable {
      * @throws IOException in case there is an issue writing the file to disk
      */
     public File trimAudio(File in) throws IOException {
-        File outFile = new File("./input_trimmed.wav");
+        File outFile = new File("./data/input_trimmed.wav");
         if (!outFile.getParentFile().exists())
             outFile.getParentFile().mkdirs();
         if (!outFile.exists())
@@ -352,6 +405,8 @@ public class Controller implements Initializable {
      * @throws IOException In case something goes wrong with reading/writing files
      */
     public void createWav(String out, Character[] dialogue) throws IOException {
+        helpText.setText("Building file...");
+
         File outFile = new File(out);
         if (!outFile.getParentFile().exists())
             outFile.getParentFile().mkdirs();
