@@ -1,12 +1,11 @@
 package sanser;
 
+import javafx.beans.value.ChangeListener;
+import javafx.beans.value.ObservableValue;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.fxml.Initializable;
-import javafx.scene.control.Button;
-import javafx.scene.control.Slider;
-import javafx.scene.control.TextArea;
-import javafx.scene.control.TextField;
+import javafx.scene.control.*;
 import javafx.scene.media.AudioClip;
 import javafx.scene.media.Media;
 import javafx.scene.media.MediaPlayer;
@@ -31,6 +30,8 @@ public class Controller implements Initializable {
     public File outputDir;
     public File outputFile;
 
+    private int speechMode;
+
     public AudioClip clip;
     private boolean soundGenerated = false;
     private boolean playingAudio = false;
@@ -50,6 +51,7 @@ public class Controller implements Initializable {
     @FXML private TextArea script;
     @FXML private TextField trimInput;
     @FXML private Slider trimSlider;
+    @FXML private ChoiceBox<String> boxSpeechType;
 
     @Override
     public void initialize(URL location, ResourceBundle resources) {
@@ -60,6 +62,28 @@ public class Controller implements Initializable {
         outputPath.setText("Output Dir: " + outputDir.getAbsolutePath());
 
         helpText.setText("");
+
+        //set up speech type selector
+        boxSpeechType.getItems().add("Each Character");
+        boxSpeechType.getItems().add("Each Syllable");
+        boxSpeechType.getSelectionModel().select(1);
+        speechMode = 1;
+
+        //update speechMode when selector is changed
+        boxSpeechType.setOnAction(e -> {
+            speechMode = boxSpeechType.getSelectionModel().getSelectedIndex();
+        });
+
+        //adjust the inputTrimDuration whenever the slider is changed
+        trimSlider.valueProperty().addListener(new ChangeListener<Number>() {
+            @Override
+            public void changed(ObservableValue<? extends Number> observableValue, Number number, Number t1) {
+                int round = (int)(t1.doubleValue() * 100);
+                inputTrimDuration = ((double)round)/100;
+                trimInput.setText("" + inputTrimDuration);
+                helpText.setText("Sample trim set: " + inputTrimDuration);
+            }
+        });
     }
 
     public void selectInputFile(ActionEvent event) {
@@ -95,12 +119,6 @@ public class Controller implements Initializable {
         helpText.setText("Output directory set: " + outputDir.getAbsolutePath());
     }
 
-    public void adjustTrimSlider(ActionEvent event) {
-        inputTrimDuration = trimSlider.valueProperty().doubleValue();
-        trimInput.setText("" + inputTrimDuration);
-        helpText.setText("Sample trim set: " + inputTrimDuration);
-    }
-
     public void adjustTrimInput(ActionEvent event) {
         double k;
         try {
@@ -111,12 +129,6 @@ public class Controller implements Initializable {
         trimSlider.setValue(k);
         inputTrimDuration = k;
         helpText.setText("Sample trim set: " + inputTrimDuration);
-    }
-
-    public void updateAdjustmentField(double i) {
-        //handle adjustment in percent of the original length. I.e. full length = 1.0
-        trimInput.setText("" + i);
-        trimSlider.setValue(i);
     }
 
     public void save(ActionEvent event) {
@@ -210,39 +222,50 @@ public class Controller implements Initializable {
             */
             ArrayList<Character> sounds = new ArrayList<>();
             String[] words = scriptText.split("\\s+"); //split on spaces, include consecutive
-            System.out.println(words);
-            for (String s : words) {
-                int syl = getSyllables(s);
-                while (syl != 0) {
-                    sounds.add('a');
-                    syl--;
-                }
-                if (s.matches(".*([.,!?])\\z")){
-                    sounds.add(' ');
-                }
 
-                sounds.add(' '); // add a pause after every word
+            if (speechMode == 0) { //beep on every character
+                for (String s : words) {
+                    boolean endsInPunctuation = false;
+                    int beepCount = s.length();
+                    char a = s.charAt(beepCount-1);
+                    //check if the word ends in any of these characters
+                    if (a=='.' || a==',' || a=='!' || a=='?' || a==':' || a==';' || a=='-') {
+                        beepCount--;
+                        endsInPunctuation = true;
+                    }
+                    while (beepCount > 0) {
+                        sounds.add('a');
+                        beepCount--;
+                    }
+
+                    sounds.add(' '); //add pause after every word
+
+                    if (endsInPunctuation)
+                        sounds.add(' '); //add an extra pause if the word ends in punctuation
+                }
+            }
+            else { //beep on every syllable
+                for (String s : words) {
+                    int syl = getSyllables(s);
+                    while (syl != 0) {
+                        sounds.add('a');
+                        syl--;
+                    }
+                    if (s.matches(".*([.,!?])\\z")){
+                        sounds.add(' ');
+                    }
+                    sounds.add(' '); // add a pause after every word
+                }
             }
 
-//            for (int x = 0; x < 10; x++) {
-//                wavList[x] = trimmedInput.getAbsolutePath();
-//            }
-            //addWav(outputFile.getAbsolutePath(), wavList.toArray(new String[0])); //THIS PROBABLY WONT WORK
+
+
             createWav(outputFile.getAbsolutePath(), sounds.toArray(sounds.toArray(new Character[0])));
             return true;
         } catch (Exception e) {
             e.printStackTrace();
             return false;
         }
-    }
-
-    public AudioInputStream append(AudioInputStream sound1, AudioInputStream sound2) {
-        AudioInputStream appendedFiles = new AudioInputStream(
-                new SequenceInputStream(sound1, sound2),
-                sound1.getFormat(),
-                sound1.getFrameLength() + sound2.getFrameLength());
-
-        return appendedFiles;
     }
 
     public void updateByteLimit(File in) {
@@ -313,6 +336,49 @@ public class Controller implements Initializable {
         if (a.length == 4)
             return new byte[]{a[3], a[2], a[1], a[0]};
         return null;
+    }
+
+    /**
+     * Updates the file header of the output wav file to reflect the increased duration
+     * @param out Output file location
+     * @param fileCount Amount of times the sample file was used
+     * @throws IOException If the output file cannot be accessed
+     */
+    public void updateFileHeader(String out, int fileCount) throws IOException {
+        RandomAccessFile raf = new RandomAccessFile(out, "rw");
+        FileChannel channel = raf.getChannel(); //open file channel
+
+        MappedByteBuffer buffer = channel.map(FileChannel.MapMode.READ_WRITE, 0, 44);// File header length
+        //noinspection ConstantConditions
+        int length1 = byteArrayToInt(byteToByte(new byte[]{buffer.get(4), buffer.get(5), buffer.get(6), buffer.get(7)}));
+        //noinspection ConstantConditions
+        int length2 = byteArrayToInt(byteToByte(new byte[]{buffer.get(40), buffer.get(41), buffer.get(42), buffer.get(43)}));
+
+        int headerLength1 = 0, headerLength2 = 0;
+        //this works because the pause duration is the same length as the trimmed sample
+        while (fileCount > 0) {
+            headerLength1 += length1;
+            headerLength2 += length2;
+            fileCount--;
+        }
+
+        //this next part is unchanged from what I found online...
+        byte[] head1 = byteToByte(intToByteArray(headerLength1));
+        byte[] head2 = byteToByte(intToByteArray(headerLength2));
+        // Perform modification operations
+        buffer.put(4, head1[0]);
+        buffer.put(5, head1[1]);
+        buffer.put(6, head1[2]);
+        buffer.put(7, head1[3]);
+        buffer.put(40, head2[0]);
+        buffer.put(41, head2[1]);
+        buffer.put(42, head2[2]);
+        buffer.put(43, head2[3]);
+        buffer.force();//Forced output, changes in the buffer take effect to the file
+
+        buffer.clear();
+        channel.close();
+        raf.close();
     }
 
     //TODO: Rewrite this so it is optimized for using a single file 50+ times
@@ -465,6 +531,9 @@ public class Controller implements Initializable {
         os.flush(); //just in case?
         os.close();
 
+        updateFileHeader(out, dialogue.length);
+
+        /*
         // At this point, all wavs in the in array are merged into out.wav, but when out.wav is played, the audio
         // content is still only the content of the first audio, so the file header of out.wav needs to be changed
         headLength1 = 0;
@@ -475,5 +544,7 @@ public class Controller implements Initializable {
 
         // NOTE: THE ISSUE WHERE THE END IS RANDOMLY CUT OFF IS PROBABLY CAUSED BY THE HEADER LENGTH NOT ACCOUNTING FOR
         // THE PAUSES. OR MAYBE IT'S AN ISSUE WITH THE WORD COUNT??
+
+         */
     }
 }
