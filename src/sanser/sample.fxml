@@ -23,7 +23,10 @@
                         <Insets right="10.0" />
                      </HBox.margin>
                   </Button>
-                  <Text fx:id="inputPath" strokeType="OUTSIDE" strokeWidth="0.0" text="Input File: ..." wrappingWidth="470.0" HBox.hgrow="ALWAYS" />
+                  <Text fx:id="inputPath" strokeType="OUTSIDE" strokeWidth="0.0" text="Input File: ..." wrappingWidth="470.0" HBox.hgrow="ALWAYS">
+                     <HBox.margin>
+                        <Insets top="4.0" />
+                     </HBox.margin></Text>
                </children>
                <VBox.margin>
                   <Insets bottom="5.0" />
@@ -36,7 +39,10 @@
                         <Insets right="10.0" />
                      </HBox.margin>
                   </Button>
-                  <Text fx:id="outputPath" strokeType="OUTSIDE" strokeWidth="0.0" text="Output Dir: ..." wrappingWidth="470.0" />
+                  <Text fx:id="outputPath" strokeType="OUTSIDE" strokeWidth="0.0" text="Output Dir: ..." wrappingWidth="470.0">
+                     <HBox.margin>
+                        <Insets top="4.0" />
+                     </HBox.margin></Text>
                </children>
                <VBox.margin>
                   <Insets bottom="5.0" />
@@ -66,6 +72,9 @@
                      </children>
                   </VBox>
                </children>
+               <opaqueInsets>
+                  <Insets />
+               </opaqueInsets>
             </HBox>
             <VBox prefHeight="200.0" prefWidth="100.0">
                <children>
@@ -75,6 +84,9 @@
             </VBox>
             <ButtonBar prefHeight="40.0" prefWidth="200.0">
               <buttons>
+                  <Button fx:id="btnDevClear" layoutX="244.0" layoutY="18.0" mnemonicParsing="false" onAction="#dev_clear" text="clear" />
+                  <Button fx:id="btnDevPlayS" layoutX="345.0" layoutY="18.0" mnemonicParsing="false" onAction="#dev_playSound" text="play sample" />
+                  <Button fx:id="btnDevGoto" mnemonicParsing="false" onAction="#dev_goToFile" text="go to file" />
                 <Button fx:id="btnPlay" mnemonicParsing="false" onAction="#playSound" text="Play" />
                   <Button fx:id="btnSave" layoutX="510.0" layoutY="18.0" mnemonicParsing="false" onAction="#save" text="Save" />
               </buttons>
