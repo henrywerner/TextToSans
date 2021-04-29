@@ -139,7 +139,11 @@ public class Controller implements Initializable {
     }
 
     public void save(ActionEvent event) {
-        if (buildSound()) {
+        SoundBuilder sb = new SoundBuilder(speechMode, inputTrimDuration);
+
+        String outFile = sb.buildSound(outputDir, inputFile, script.getText());
+
+        if (outFile != null) {
             soundGenerated = true;
             System.out.println("Saved");
             helpText.setText("Save Complete.");
@@ -343,8 +347,9 @@ public class Controller implements Initializable {
                 count++;
             }
 
-            updateFileHead(in.getAbsolutePath(), false);
-            updateFileHead(outFile.getAbsolutePath(), true);//Head synthesis
+            //updateFileHead(in.getAbsolutePath(), false);
+            //updateFileHead(outFile.getAbsolutePath(), true);//Head synthesis
+            updateFileHeader(outFile.getAbsolutePath(), 1);
         } catch (IOException e) {
             e.printStackTrace();
         } finally {
